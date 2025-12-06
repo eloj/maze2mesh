@@ -8,11 +8,18 @@
 
 #include "meshoptimizer.h"
 
+struct Vertex {
+	float x,y,z;
+};
+
 struct Maze {
 	int w;
 	int h;
 	std::vector<unsigned char> data;
 };
+
+using VertexArray = std::vector<Vertex>;
+using IndexBuffer = std::vector<unsigned int>;
 
 bool load_maze(const char *filename, Maze& map) {
 
@@ -48,7 +55,6 @@ bool load_maze(const char *filename, Maze& map) {
 
 		// printf("XXX:%s\n", line);
 	}
-	// printf("Detected map dimensions: %dx%d\n", max_w, max_h);
 
 	rewind(f);
 
@@ -68,6 +74,7 @@ bool load_maze(const char *filename, Maze& map) {
 			line[len - 1] = '\0';
 			--len;
 		}
+
 		assert((int)len <= max_w);
 		assert((int)len + idx <= (int)map.data.size());
 
@@ -81,8 +88,77 @@ bool load_maze(const char *filename, Maze& map) {
 	return true;
 }
 
+bool write_obj(const char *filename, VertexArray& vertices, IndexBuffer& indeces) {
+
+	FILE *fout = fopen(filename, "w");
+	if (!fout) {
+		return false;
+	}
+
+	fprintf(fout, "# maze2mesh\n");
+	fprintf(fout, "o maze\n");
+
+	for (Vertex& v : vertices) {
+		fprintf(fout, "v %.06f %.06f %06f\n", v.x, v.y, v.z);
+	}
+
+	fprintf(fout, "s 0\n");
+
+	for (size_t i = 0 ; i < indeces.size() ; i += 3) {
+		fprintf(fout, "f %d %d %d\n", 1 + indeces[i + 0], 1 + indeces[i + 1], 1 + indeces[i + 2]);
+	}
+
+	fclose(fout);
+	return true;
+}
+
+void add_box_at(Maze& map, int x, int y, VertexArray& vertices, IndexBuffer& indeces) {
+	int scale = 2;
+	int base_vrt = vertices.size();
+
+	Vertex boxverts[] = {
+		{ 1.0, 1.0, -1.0 },
+		{ 1.0, 0.0, -1.0 },
+		{ 1.0, 1.0,  0.0 },
+		{ 1.0, 0.0,  0.0 },
+		{ 0.0, 1.0, -1.0 },
+		{ 0.0, 0.0, -1.0 },
+		{ 0.0, 1.0,  0.0 },
+		{ 0.0, 0.0,  0.0 }
+	};
+
+	// TODO: make zero-indexed
+	int boxind[] = {
+		5, 3, 1, 3, 8, 4,
+		7, 6, 8, 2, 8, 6,
+		1, 4, 2, 5, 2, 6,
+		5, 7, 3, 3, 7, 8,
+		7, 5, 6, 2, 4, 8,
+		1, 3, 4, 5, 1, 2
+	};
+
+	for (Vertex& v : boxverts) {
+		v.x *= scale;
+		v.y *= scale;
+		v.z *= scale;
+
+		v.x += (x - map.w/2) * scale;
+		v.z += (y - map.h/2) * scale;
+
+		vertices.push_back(v);
+	}
+
+	for (int& i : boxind) {
+		i -= 1;
+		i += base_vrt;
+		indeces.push_back(i);
+	}
+
+}
+
 int main(int argc, char *argv[]) {
 	const char *filename = argc > 1 ? argv[1] : "data/bt1skarabrae.txt";
+	bool do_optimize = true;
 
 	Maze map;
 	if (!load_maze(filename, map)) {
@@ -92,16 +168,49 @@ int main(int argc, char *argv[]) {
 
 	printf("Loaded %dx%d map '%s'\n", map.w, map.h, filename);
 
+	VertexArray vertices;
+	IndexBuffer indeces;
+
 	for (int j = 0 ; j < map.h ; ++j) {
 		for (int i = 0 ; i < map.w ; ++i) {
 			int idx = j * map.h + i;
-			printf("%c", map.data[idx]);
+			if (map.data[idx] == '*') {
+				add_box_at(map, i, j, vertices, indeces);
+				printf("#");
+			} else {
+				printf(" ");
+			}
 
 		}
 		printf("\n");
 	}
 
-	meshopt_generateVertexRemap(NULL, NULL, 0, NULL, 0, 4*3);
+	size_t index_count = indeces.size();
+	size_t unindexed_vertex_count = vertices.size();
+	printf("Generated %zu vertices, %zu indeces\n", unindexed_vertex_count, index_count);
+
+	if (do_optimize) {
+		IndexBuffer remap(unindexed_vertex_count);
+
+		size_t vertex_count = meshopt_generateVertexRemap(&remap[0], &indeces[0], index_count, &vertices[0], unindexed_vertex_count, sizeof(Vertex));
+		printf("Optimized vertex count: %zu\n", vertex_count);
+
+		VertexArray opt_vertices(vertex_count);
+		IndexBuffer opt_indeces(index_count);
+
+		meshopt_remapIndexBuffer(&opt_indeces[0], &indeces[0], index_count, &remap[0]);
+		meshopt_remapVertexBuffer(&opt_vertices[0], &vertices[0], unindexed_vertex_count, sizeof(Vertex), &remap[0]);
+
+		vertices = opt_vertices;
+		indeces = opt_indeces;
+	}
+
+	const char *outfile = "maze1.obj";
+	if (!write_obj(outfile, vertices, indeces)) {
+		fprintf(stderr, "Error writing mesh '%s': %s\n", outfile, strerror(errno));
+		return EXIT_FAILURE;
+	}
+	printf("Wrote mesh to '%s'\n", outfile);
 
 	return EXIT_SUCCESS;
 }
