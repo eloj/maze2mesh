@@ -133,14 +133,13 @@ void add_box_at(Maze& map, int x, int y, VertexArray& vertices, IndexBuffer& ind
 		{ 0.0, 0.0,  0.0 }
 	};
 
-	// TODO: make zero-indexed
 	int boxind[] = {
-		5, 3, 1, 3, 8, 4,
-		7, 6, 8, 2, 8, 6,
-		1, 4, 2, 5, 2, 6,
-		5, 7, 3, 3, 7, 8,
-		7, 5, 6, 2, 4, 8,
-		1, 3, 4, 5, 1, 2
+		4, 2, 0, 2, 7, 3,
+		6, 5, 7, 1, 7, 5,
+		0, 3, 1, 4, 1, 5,
+		4, 6, 2, 2, 6, 7,
+		6, 4, 5, 1, 3, 7,
+		0, 2, 3, 4, 0, 1
 	};
 
 	for (Vertex& v : boxverts) {
@@ -154,8 +153,7 @@ void add_box_at(Maze& map, int x, int y, VertexArray& vertices, IndexBuffer& ind
 		vertices.push_back(v);
 	}
 
-	for (int& i : boxind) {
-		i -= 1;
+	for (int i : boxind) {
 		i += base_vrt;
 		indeces.push_back(i);
 	}
@@ -164,7 +162,8 @@ void add_box_at(Maze& map, int x, int y, VertexArray& vertices, IndexBuffer& ind
 
 int main(int argc, char *argv[]) {
 	const char *filename = argc > 1 ? argv[1] : "data/bt1skarabrae.txt";
-	bool do_optimize = true;
+	bool do_write_tilemap = true;
+	bool do_meshopt = true;
 
 	Maze map;
 	if (!load_maze(filename, map)) {
@@ -195,7 +194,7 @@ int main(int argc, char *argv[]) {
 	size_t unindexed_vertex_count = vertices.size();
 	printf("Generated %zu vertices, %zu indeces\n", unindexed_vertex_count, index_count);
 
-	if (do_optimize) {
+	if (do_meshopt) {
 		IndexBuffer remap(unindexed_vertex_count);
 
 		size_t vertex_count = meshopt_generateVertexRemap(&remap[0], &indeces[0], index_count, &vertices[0], unindexed_vertex_count, sizeof(Vertex));
@@ -209,6 +208,21 @@ int main(int argc, char *argv[]) {
 
 		vertices = opt_vertices;
 		indeces = opt_indeces;
+	}
+
+	if (do_write_tilemap) {
+		const char *outtilemap = "maze1.tilemap.bin";
+		FILE *f = fopen(outtilemap, "wb");
+		if (f) {
+			fwrite(&map.w, sizeof(map.w), 1, f);
+			fwrite(&map.h, sizeof(map.h), 1, f);
+			fwrite(&map.data[0], map.data.size(), 1, f);
+			fclose(f);
+			printf("Wrote tilemap data to '%s'\n", outtilemap);
+		} else {
+			fprintf(stderr, "Error writing tilemap '%s': %s\n", outtilemap, strerror(errno));
+			return EXIT_FAILURE;
+		}
 	}
 
 	const char *outfile = "maze1.obj";
