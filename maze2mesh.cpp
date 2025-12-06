@@ -130,8 +130,33 @@ bool write_obj(const char *filename, VertexArray& vertices, IndexBuffer& indeces
 	return true;
 }
 
+void add_bbox_plane(VertexArray& vertices, IndexBuffer& indeces, BBox &bbox, float ypos) {
+	int scale = 1;
+	int base_vrt = vertices.size();
+
+	Vertex rectverts[] = {
+		{ bbox[1].x, ypos, bbox[1].z },
+		{ bbox[1].x, ypos, bbox[0].z },
+		{ bbox[0].x, ypos, bbox[0].z },
+		{ bbox[0].x, ypos, bbox[1].z }
+	};
+
+	int rectidx[] = { 0, 1, 3, 1, 2, 3 };
+
+	for (Vertex& v : rectverts) {
+		v.x *= scale;
+		v.y *= scale;
+		v.z *= scale;
+		vertices.push_back(v);
+	}
+
+	for (int i : rectidx) {
+		indeces.push_back(base_vrt + i);
+	}
+}
+
 void add_box_at(Maze& map, int x, int y, VertexArray& vertices, IndexBuffer& indeces, BBox &bbox) {
-	int scale = 2;
+	int scale = 1;
 	int base_vrt = vertices.size();
 
 	Vertex boxverts[] = {
@@ -173,8 +198,7 @@ void add_box_at(Maze& map, int x, int y, VertexArray& vertices, IndexBuffer& ind
 	}
 
 	for (int i : boxind) {
-		i += base_vrt;
-		indeces.push_back(i);
+		indeces.push_back(base_vrt + i);
 	}
 }
 
@@ -182,6 +206,8 @@ int main(int argc, char *argv[]) {
 	const char *filename = argc > 1 ? argv[1] : "data/bt1skarabrae.txt";
 	bool do_write_tilemap = true;
 	bool do_meshopt = true;
+	bool do_floor = true;
+	bool do_ceil = false;
 
 	Maze map;
 	if (!load_maze(filename, map)) {
@@ -213,6 +239,16 @@ int main(int argc, char *argv[]) {
 	}
 
 	printf(std::format("Bounding box = {}\n", bbox).c_str());
+
+	if (do_floor) {
+		printf("Adding floor rectangle.\n");
+		add_bbox_plane(vertices, indeces, bbox, bbox[0].y);
+	}
+
+	if (do_ceil) {
+		printf("Adding ceiling rectangle.\n");
+		add_bbox_plane(vertices, indeces, bbox, bbox[1].y);
+	}
 
 	size_t index_count = indeces.size();
 	size_t unindexed_vertex_count = vertices.size();
