@@ -6,11 +6,12 @@
 */
 #include <cstdio>
 #include <cstdlib>
-#include <cerrno>
 #include <cstring>
+#include <cerrno>
 
 #include <vector>
-#include <array>
+#include <limits>
+#include <format>
 
 #include "meshoptimizer.h"
 
@@ -26,6 +27,30 @@ struct Maze {
 
 using VertexArray = std::vector<Vertex>;
 using IndexBuffer = std::vector<unsigned int>;
+using BBox = Vertex[2];
+
+template<>
+struct std::formatter<Vertex> {
+	constexpr auto parse(std::format_parse_context& ctx) {
+		return ctx.begin();
+	}
+
+	auto format(const Vertex& v, std::format_context& ctx) const {
+		return std::format_to(ctx.out(), "{},{},{}", v.x, v.y, v.z);
+	}
+};
+
+template<>
+struct std::formatter<BBox> {
+	constexpr auto parse(std::format_parse_context& ctx) {
+		return ctx.begin();
+	}
+
+	auto format(const BBox& bbox, std::format_context& ctx) const {
+		return std::format_to(ctx.out(), "{{ {{ {} }}, {{ {} }} }}", bbox[0], bbox[1]);
+	}
+};
+
 
 bool load_maze(const char *filename, Maze& map) {
 
@@ -47,19 +72,11 @@ bool load_maze(const char *filename, Maze& map) {
 			continue;
 		}
 
-		size_t len = strlen(line);
-
-		if (line[len - 1] == '\n') {
-			line[len - 1] = '\0';
-			--len;
-		}
-
-		++max_h;
-		if ((int)len > max_w) {
+		int len = (int)strlen(line) - 1;
+		if (len > max_w) {
 			max_w = len;
 		}
-
-		// printf("XXX:%s\n", line);
+		++max_h;
 	}
 
 	rewind(f);
@@ -74,12 +91,7 @@ bool load_maze(const char *filename, Maze& map) {
 			continue;
 		}
 
-		size_t len = strlen(line);
-
-		if (line[len - 1] == '\n') {
-			line[len - 1] = '\0';
-			--len;
-		}
+		size_t len = strlen(line) - 1;
 
 		assert((int)len <= max_w);
 		assert((int)len + idx <= (int)map.data.size());
@@ -118,7 +130,7 @@ bool write_obj(const char *filename, VertexArray& vertices, IndexBuffer& indeces
 	return true;
 }
 
-void add_box_at(Maze& map, int x, int y, VertexArray& vertices, IndexBuffer& indeces) {
+void add_box_at(Maze& map, int x, int y, VertexArray& vertices, IndexBuffer& indeces, BBox &bbox) {
 	int scale = 2;
 	int base_vrt = vertices.size();
 
@@ -150,6 +162,13 @@ void add_box_at(Maze& map, int x, int y, VertexArray& vertices, IndexBuffer& ind
 		v.x += (x - map.w/2) * scale;
 		v.z += (y - map.h/2) * scale;
 
+		if (v.x < bbox[0].x) { bbox[0].x = v.x; }
+		if (v.y < bbox[0].y) { bbox[0].y = v.y; }
+		if (v.z < bbox[0].z) { bbox[0].z = v.z; }
+		if (v.x > bbox[1].x) { bbox[1].x = v.x; }
+		if (v.y > bbox[1].y) { bbox[1].y = v.y; }
+		if (v.z > bbox[1].z) { bbox[1].z = v.z; }
+
 		vertices.push_back(v);
 	}
 
@@ -157,7 +176,6 @@ void add_box_at(Maze& map, int x, int y, VertexArray& vertices, IndexBuffer& ind
 		i += base_vrt;
 		indeces.push_back(i);
 	}
-
 }
 
 int main(int argc, char *argv[]) {
@@ -173,14 +191,18 @@ int main(int argc, char *argv[]) {
 
 	printf("Loaded %dx%d map '%s'\n", map.w, map.h, filename);
 
+	const float f_min = std::numeric_limits<float>::lowest();
+	const float f_max = std::numeric_limits<float>::max();
+
 	VertexArray vertices;
 	IndexBuffer indeces;
+	BBox bbox{ { f_max, f_max, f_max }, { f_min, f_min, f_min } };
 
 	for (int j = 0 ; j < map.h ; ++j) {
 		for (int i = 0 ; i < map.w ; ++i) {
 			int idx = j * map.h + i;
 			if (map.data[idx] == '*') {
-				add_box_at(map, i, j, vertices, indeces);
+				add_box_at(map, i, j, vertices, indeces, bbox);
 				printf("#");
 			} else {
 				printf(" ");
@@ -189,6 +211,8 @@ int main(int argc, char *argv[]) {
 		}
 		printf("\n");
 	}
+
+	printf(std::format("Bounding box = {}\n", bbox).c_str());
 
 	size_t index_count = indeces.size();
 	size_t unindexed_vertex_count = vertices.size();

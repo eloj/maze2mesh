@@ -3,9 +3,9 @@
 
 ## Purpose
 
-Generate mesh from 2D map ASCII description.
+Generate (Wavefront .obj) 3D mesh from 2D ASCII tilemap/maze description.
 
-You will almost certainly find no use for this.
+You will almost certainly find no use for this. If I'm wrong, let me know by pushing the star button.
 
 ## Usage
 
