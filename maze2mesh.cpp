@@ -1,3 +1,9 @@
+/*
+	maze2mesh -- Generate mesh from 2D cartesian ASCII description.
+	Copyright (c) 2025, Eddy Jansson. Licensed under The MIT License.
+
+	See https://github.com/eloj/maze2mesh
+*/
 #include <cstdio>
 #include <cstdlib>
 #include <cerrno>
