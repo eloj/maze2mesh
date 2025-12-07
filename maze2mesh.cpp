@@ -64,6 +64,7 @@ struct Maze {
 	std::vector<unsigned char> data;
 
 	Mesh	maze;
+	Mesh    house;
 	Mesh	floor;
 	Mesh	ceiling;
 };
@@ -176,6 +177,7 @@ bool write_map_obj(const char *filename, Maze& map) {
 
 	int total_vertex_count = 0;
 	write_mesh(fout, map.maze, total_vertex_count);
+	write_mesh(fout, map.house, total_vertex_count);
 	write_mesh(fout, map.floor, total_vertex_count);
 	write_mesh(fout, map.ceiling, total_vertex_count);
 	fclose(fout);
@@ -260,6 +262,7 @@ void add_box_at(Maze& map, int x, int y, Mesh& mesh) {
 int main(int argc, char *argv[]) {
 	const char *filename = argc > 1 ? argv[1] : "data/bt1skarabrae.txt";
 	bool do_write_tilemap = true;
+	bool do_zero_unknown_tiles = false;
 	bool do_meshopt = true;
 	bool do_floor = true;
 	bool do_ceil = false;
@@ -273,16 +276,29 @@ int main(int argc, char *argv[]) {
 	printf("Loaded %dx%d map '%s'\n", map.w, map.h, filename);
 
 	map.maze.name = "maze";
+	map.house.name = "house";
 	for (int j = 0 ; j < map.h ; ++j) {
 		for (int i = 0 ; i < map.w ; ++i) {
 			int idx = j * map.h + i;
-			if (map.data[idx] == '*') {
-				add_box_at(map, i, j, map.maze);
-				printf("#");
-			} else {
-				printf(" ");
+			switch (map.data[idx]) {
+				case '*':
+					add_box_at(map, i, j, map.maze);
+					printf("#");
+					break;
+				case ' ':
+					printf(" ");
+					break;
+				default:
+					if ((map.data[idx] >= 'A') && (map.data[idx] <= 'Z')) {
+						add_box_at(map, i, j, map.house);
+						printf("%c", map.data[idx]);
+					} else if (do_zero_unknown_tiles) {
+						map.data[idx] = 0;
+						printf("?");
+					} else {
+						printf("%c", map.data[idx]);
+					}
 			}
-
 		}
 		printf("\n");
 	}
@@ -307,6 +323,7 @@ int main(int argc, char *argv[]) {
 
 	if (do_meshopt) {
 		map.maze.optimize();
+		map.house.optimize();
 	}
 
 	if (do_write_tilemap) {
