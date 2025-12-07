@@ -15,19 +15,58 @@
 
 #include "meshoptimizer.h"
 
+const float f_min = std::numeric_limits<float>::lowest();
+const float f_max = std::numeric_limits<float>::max();
+
 struct Vertex {
 	float x,y,z;
-};
-
-struct Maze {
-	int w;
-	int h;
-	std::vector<unsigned char> data;
 };
 
 using VertexArray = std::vector<Vertex>;
 using IndexBuffer = std::vector<unsigned int>;
 using BBox = Vertex[2];
+
+struct Mesh {
+	Mesh() : bbox({ f_max, f_max, f_max }, { f_min, f_min, f_min }) { }
+	void optimize(void);
+
+	std::string name;
+	VertexArray vertices;
+	IndexBuffer indeces;
+	BBox bbox;
+};
+
+void Mesh::optimize(void) {
+	size_t index_count = indeces.size();
+	size_t vertex_count = vertices.size();
+
+	printf("Optimizing %s: %zu vertices -> ", name.c_str(), vertex_count);
+
+	IndexBuffer remap(vertex_count);
+
+	size_t opt_vertex_count = meshopt_generateVertexRemap(&remap[0], &indeces[0], index_count, &vertices[0], vertex_count, sizeof(Vertex));
+
+	VertexArray opt_vertices(opt_vertex_count);
+	IndexBuffer opt_indeces(index_count);
+
+	meshopt_remapIndexBuffer(&opt_indeces[0], &indeces[0], index_count, &remap[0]);
+	meshopt_remapVertexBuffer(&opt_vertices[0], &vertices[0], vertex_count, sizeof(Vertex), &remap[0]);
+
+	vertices = std::move(opt_vertices);
+	indeces = std::move(opt_indeces);
+
+	printf("%zu vertices.\n", opt_vertex_count);
+}
+
+struct Maze {
+	int w;
+	int h;
+	std::vector<unsigned char> data;
+
+	Mesh	maze;
+	Mesh	floor;
+	Mesh	ceiling;
+};
 
 template<>
 struct std::formatter<Vertex> {
@@ -106,33 +145,49 @@ bool load_maze(const char *filename, Maze& map) {
 	return true;
 }
 
-bool write_obj(const char *filename, VertexArray& vertices, IndexBuffer& indeces) {
+void write_mesh(FILE *f, const Mesh& mesh, int& total_vertex_count) {
+	if (mesh.vertices.size() == 0) {
+		return;
+	}
+
+	fprintf(f, "o %s\n", mesh.name.c_str());
+
+	for (const Vertex& v : mesh.vertices) {
+		fprintf(f, "v %.06f %.06f %06f\n", v.x, v.y, v.z);
+	}
+
+	fprintf(f, "s 0\n");
+
+	for (size_t i = 0 ; i < mesh.indeces.size() ; i += 3) {
+		fprintf(f, "f %d %d %d\n", 1 + total_vertex_count + mesh.indeces[i + 0], 1 + total_vertex_count + mesh.indeces[i + 1], 1 + total_vertex_count + mesh.indeces[i + 2]);
+	}
+
+	total_vertex_count += mesh.vertices.size();
+}
+
+bool write_map_obj(const char *filename, Maze& map) {
 
 	FILE *fout = fopen(filename, "w");
 	if (!fout) {
 		return false;
 	}
 
-	fprintf(fout, "# maze2mesh\n");
-	fprintf(fout, "o maze\n");
+	fprintf(fout, "# maze2mesh -- https://github.com/eloj/maze2mesh\n");
 
-	for (Vertex& v : vertices) {
-		fprintf(fout, "v %.06f %.06f %06f\n", v.x, v.y, v.z);
-	}
-
-	fprintf(fout, "s 0\n");
-
-	for (size_t i = 0 ; i < indeces.size() ; i += 3) {
-		fprintf(fout, "f %d %d %d\n", 1 + indeces[i + 0], 1 + indeces[i + 1], 1 + indeces[i + 2]);
-	}
-
+	int total_vertex_count = 0;
+	write_mesh(fout, map.maze, total_vertex_count);
+	write_mesh(fout, map.floor, total_vertex_count);
+	write_mesh(fout, map.ceiling, total_vertex_count);
 	fclose(fout);
+
+	printf("Final vertex count: %d\n", total_vertex_count);
+
 	return true;
 }
 
-void add_bbox_plane(VertexArray& vertices, IndexBuffer& indeces, BBox &bbox, float ypos) {
-	int scale = 1;
-	int base_vrt = vertices.size();
+void add_bbox_plane(Mesh &mesh, const BBox& bbox, float ypos) {
+	const int scale = 1;
+	int base_vrt = mesh.vertices.size();
 
 	Vertex rectverts[] = {
 		{ bbox[1].x, ypos, bbox[1].z },
@@ -147,17 +202,17 @@ void add_bbox_plane(VertexArray& vertices, IndexBuffer& indeces, BBox &bbox, flo
 		v.x *= scale;
 		v.y *= scale;
 		v.z *= scale;
-		vertices.push_back(v);
+		mesh.vertices.push_back(v);
 	}
 
 	for (int i : rectidx) {
-		indeces.push_back(base_vrt + i);
+		mesh.indeces.push_back(base_vrt + i);
 	}
 }
 
-void add_box_at(Maze& map, int x, int y, VertexArray& vertices, IndexBuffer& indeces, BBox &bbox) {
-	int scale = 1;
-	int base_vrt = vertices.size();
+void add_box_at(Maze& map, int x, int y, Mesh& mesh) {
+	const int scale = 1;
+	int base_vrt = mesh.vertices.size();
 
 	Vertex boxverts[] = {
 		{ 1.0, 1.0, -1.0 },
@@ -187,18 +242,18 @@ void add_box_at(Maze& map, int x, int y, VertexArray& vertices, IndexBuffer& ind
 		v.x += (x - map.w/2) * scale;
 		v.z += (y - map.h/2) * scale;
 
-		if (v.x < bbox[0].x) { bbox[0].x = v.x; }
-		if (v.y < bbox[0].y) { bbox[0].y = v.y; }
-		if (v.z < bbox[0].z) { bbox[0].z = v.z; }
-		if (v.x > bbox[1].x) { bbox[1].x = v.x; }
-		if (v.y > bbox[1].y) { bbox[1].y = v.y; }
-		if (v.z > bbox[1].z) { bbox[1].z = v.z; }
+		if (v.x < mesh.bbox[0].x) { mesh.bbox[0].x = v.x; }
+		if (v.y < mesh.bbox[0].y) { mesh.bbox[0].y = v.y; }
+		if (v.z < mesh.bbox[0].z) { mesh.bbox[0].z = v.z; }
+		if (v.x > mesh.bbox[1].x) { mesh.bbox[1].x = v.x; }
+		if (v.y > mesh.bbox[1].y) { mesh.bbox[1].y = v.y; }
+		if (v.z > mesh.bbox[1].z) { mesh.bbox[1].z = v.z; }
 
-		vertices.push_back(v);
+		mesh.vertices.push_back(v);
 	}
 
 	for (int i : boxind) {
-		indeces.push_back(base_vrt + i);
+		mesh.indeces.push_back(base_vrt + i);
 	}
 }
 
@@ -217,18 +272,12 @@ int main(int argc, char *argv[]) {
 
 	printf("Loaded %dx%d map '%s'\n", map.w, map.h, filename);
 
-	const float f_min = std::numeric_limits<float>::lowest();
-	const float f_max = std::numeric_limits<float>::max();
-
-	VertexArray vertices;
-	IndexBuffer indeces;
-	BBox bbox{ { f_max, f_max, f_max }, { f_min, f_min, f_min } };
-
+	map.maze.name = "maze";
 	for (int j = 0 ; j < map.h ; ++j) {
 		for (int i = 0 ; i < map.w ; ++i) {
 			int idx = j * map.h + i;
 			if (map.data[idx] == '*') {
-				add_box_at(map, i, j, vertices, indeces, bbox);
+				add_box_at(map, i, j, map.maze);
 				printf("#");
 			} else {
 				printf(" ");
@@ -238,36 +287,26 @@ int main(int argc, char *argv[]) {
 		printf("\n");
 	}
 
-	printf(std::format("Bounding box = {}\n", bbox).c_str());
+	printf(std::format("Maze bounding box = {}\n", map.maze.bbox).c_str());
+
+	size_t index_count = map.maze.indeces.size();
+	size_t vertex_count = map.maze.vertices.size();
+	printf("Generated %zu vertices, %zu indeces\n", vertex_count, index_count);
 
 	if (do_floor) {
 		printf("Adding floor rectangle.\n");
-		add_bbox_plane(vertices, indeces, bbox, bbox[0].y);
+		map.floor.name = "floor";
+		add_bbox_plane(map.floor, map.maze.bbox, map.maze.bbox[0].y);
 	}
 
 	if (do_ceil) {
 		printf("Adding ceiling rectangle.\n");
-		add_bbox_plane(vertices, indeces, bbox, bbox[1].y);
+		map.ceiling.name = "ceiling";
+		add_bbox_plane(map.ceiling, map.maze.bbox, map.maze.bbox[1].y);
 	}
 
-	size_t index_count = indeces.size();
-	size_t unindexed_vertex_count = vertices.size();
-	printf("Generated %zu vertices, %zu indeces\n", unindexed_vertex_count, index_count);
-
 	if (do_meshopt) {
-		IndexBuffer remap(unindexed_vertex_count);
-
-		size_t vertex_count = meshopt_generateVertexRemap(&remap[0], &indeces[0], index_count, &vertices[0], unindexed_vertex_count, sizeof(Vertex));
-		printf("Optimized vertex count: %zu\n", vertex_count);
-
-		VertexArray opt_vertices(vertex_count);
-		IndexBuffer opt_indeces(index_count);
-
-		meshopt_remapIndexBuffer(&opt_indeces[0], &indeces[0], index_count, &remap[0]);
-		meshopt_remapVertexBuffer(&opt_vertices[0], &vertices[0], unindexed_vertex_count, sizeof(Vertex), &remap[0]);
-
-		vertices = opt_vertices;
-		indeces = opt_indeces;
+		map.maze.optimize();
 	}
 
 	if (do_write_tilemap) {
@@ -286,7 +325,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	const char *outfile = "maze1.obj";
-	if (!write_obj(outfile, vertices, indeces)) {
+	if (!write_map_obj(outfile, map)) {
 		fprintf(stderr, "Error writing mesh '%s': %s\n", outfile, strerror(errno));
 		return EXIT_FAILURE;
 	}
