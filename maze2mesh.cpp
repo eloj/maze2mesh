@@ -64,7 +64,7 @@ struct Maze {
 	std::vector<unsigned char> data;
 
 	Mesh	maze;
-	Mesh    house;
+	Mesh    houses;
 	Mesh	floor;
 	Mesh	ceiling;
 };
@@ -154,7 +154,7 @@ void write_mesh(FILE *f, const Mesh& mesh, int& total_vertex_count) {
 	fprintf(f, "o %s\n", mesh.name.c_str());
 
 	for (const Vertex& v : mesh.vertices) {
-		fprintf(f, "v %.06f %.06f %06f\n", v.x, v.y, v.z);
+		fprintf(f, "v %f %f %f\n", v.x, v.y, v.z);
 	}
 
 	fprintf(f, "s 0\n");
@@ -177,7 +177,7 @@ bool write_map_obj(const char *filename, Maze& map) {
 
 	int total_vertex_count = 0;
 	write_mesh(fout, map.maze, total_vertex_count);
-	write_mesh(fout, map.house, total_vertex_count);
+	write_mesh(fout, map.houses, total_vertex_count);
 	write_mesh(fout, map.floor, total_vertex_count);
 	write_mesh(fout, map.ceiling, total_vertex_count);
 	fclose(fout);
@@ -276,7 +276,7 @@ int main(int argc, char *argv[]) {
 	printf("Loaded %dx%d map '%s'\n", map.w, map.h, filename);
 
 	map.maze.name = "maze";
-	map.house.name = "house";
+	map.houses.name = "houses";
 	for (int j = 0 ; j < map.h ; ++j) {
 		for (int i = 0 ; i < map.w ; ++i) {
 			int idx = j * map.h + i;
@@ -290,7 +290,7 @@ int main(int argc, char *argv[]) {
 					break;
 				default:
 					if ((map.data[idx] >= 'A') && (map.data[idx] <= 'Z')) {
-						add_box_at(map, i, j, map.house);
+						add_box_at(map, i, j, map.houses);
 						printf("%c", map.data[idx]);
 					} else if (do_zero_unknown_tiles) {
 						map.data[idx] = 0;
@@ -303,11 +303,8 @@ int main(int argc, char *argv[]) {
 		printf("\n");
 	}
 
-	printf(std::format("Maze bounding box = {}\n", map.maze.bbox).c_str());
-
-	size_t index_count = map.maze.indeces.size();
-	size_t vertex_count = map.maze.vertices.size();
-	printf("Generated %zu vertices, %zu indeces\n", vertex_count, index_count);
+	printf("%s", std::format("Maze bounding box = {}\n", map.maze.bbox).c_str());
+	// printf(std::format("%f", "House bounding box = {}\n", map.houses.bbox).c_str());
 
 	if (do_floor) {
 		printf("Adding floor rectangle.\n");
@@ -323,7 +320,7 @@ int main(int argc, char *argv[]) {
 
 	if (do_meshopt) {
 		map.maze.optimize();
-		map.house.optimize();
+		map.houses.optimize();
 	}
 
 	if (do_write_tilemap) {
