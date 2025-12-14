@@ -10,24 +10,27 @@ CXXFLAGS=-std=gnu++20 -fno-rtti $(OPT) $(WARNFLAGS) $(ARCHFLAGS) $(MISCFLAGS)
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-LIBS:=-ldl -lpthread -lm
 INCS:=-I$(MESHOPTDIR)/src
 
 MESHOPTOBJDIR:=build
 MESHOPTSRCS:=$(wildcard $(MESHOPTDIR)/src/*.cpp)
-MESHOPTOBJS:=$(patsubst %,$(MESHOPTOBJDIR)/%,$(notdir $(MESHOPTSRCS:%.cpp=%.o)))
+MESHOPTOBJS:=$(addprefix $(MESHOPTOBJDIR)/,$(notdir $(MESHOPTSRCS:%.cpp=%.o)))
 MESHOPTLIB:= $(MESHOPTOBJDIR)/meshoptimizer.a
 
-.PHONY: clean test
+.PHONY: clean
+
+all: maze2mesh
 
 maze2mesh: maze2mesh.cpp $(MESHOPTLIB)
-	$(CXX) $< $(CXXFLAGS) $(LIBS) $(INCS) -o $@ $(filter %.a, $^)
+	$(CXX) $< $(CXXFLAGS) $(INCS) -o $@ $(filter %.a %.o, $^)
 
-$(MESHOPTOBJDIR)/%.o: $(MESHOPTDIR)/src/%.cpp | meshoptimizer.dir
+$(MESHOPTOBJDIR)/%.o: $(MESHOPTDIR)/src/%.cpp
 	$(CXX) -c $(CXXFLAGS) -Wno-float-equal -o $@ $<
 
-meshoptimizer.dir:
-	@mkdir -p $(MESHOPTOBJDIR)
+$(MESHOPTOBJS): | $(MESHOPTOBJDIR)
+
+$(MESHOPTOBJDIR):
+	@mkdir -p $@
 
 $(MESHOPTLIB): $(MESHOPTOBJS)
 	@ar rs $@ $^
