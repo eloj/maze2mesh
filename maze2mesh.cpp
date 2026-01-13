@@ -32,28 +32,28 @@ struct Mesh {
 
 	std::string name;
 	VertexArray vertices;
-	IndexBuffer indeces;
+	IndexBuffer indices;
 	BBox bbox;
 };
 
 void Mesh::optimize(void) {
-	size_t index_count = indeces.size();
+	size_t index_count = indices.size();
 	size_t vertex_count = vertices.size();
 
 	printf("Optimizing %s: %zu vertices -> ", name.c_str(), vertex_count);
 
 	IndexBuffer remap(vertex_count);
 
-	size_t opt_vertex_count = meshopt_generateVertexRemap(&remap[0], &indeces[0], index_count, &vertices[0], vertex_count, sizeof(Vertex));
+	size_t opt_vertex_count = meshopt_generateVertexRemap(&remap[0], &indices[0], index_count, &vertices[0], vertex_count, sizeof(Vertex));
 
 	VertexArray opt_vertices(opt_vertex_count);
-	IndexBuffer opt_indeces(index_count);
+	IndexBuffer opt_indices(index_count);
 
-	meshopt_remapIndexBuffer(&opt_indeces[0], &indeces[0], index_count, &remap[0]);
+	meshopt_remapIndexBuffer(&opt_indices[0], &indices[0], index_count, &remap[0]);
 	meshopt_remapVertexBuffer(&opt_vertices[0], &vertices[0], vertex_count, sizeof(Vertex), &remap[0]);
 
 	vertices = std::move(opt_vertices);
-	indeces = std::move(opt_indeces);
+	indices = std::move(opt_indices);
 
 	printf("%zu vertices.\n", opt_vertex_count);
 }
@@ -159,8 +159,8 @@ void write_mesh(FILE *f, const Mesh& mesh, int& total_vertex_count) {
 
 	fprintf(f, "s 0\n");
 
-	for (size_t i = 0 ; i < mesh.indeces.size() ; i += 3) {
-		fprintf(f, "f %d %d %d\n", 1 + total_vertex_count + mesh.indeces[i + 0], 1 + total_vertex_count + mesh.indeces[i + 1], 1 + total_vertex_count + mesh.indeces[i + 2]);
+	for (size_t i = 0 ; i < mesh.indices.size() ; i += 3) {
+		fprintf(f, "f %d %d %d\n", 1 + total_vertex_count + mesh.indices[i + 0], 1 + total_vertex_count + mesh.indices[i + 1], 1 + total_vertex_count + mesh.indices[i + 2]);
 	}
 
 	total_vertex_count += mesh.vertices.size();
@@ -208,7 +208,7 @@ void add_bbox_plane(Mesh &mesh, const BBox& bbox, float ypos) {
 	}
 
 	for (int i : rectidx) {
-		mesh.indeces.push_back(base_vrt + i);
+		mesh.indices.push_back(base_vrt + i);
 	}
 }
 
@@ -255,7 +255,7 @@ void add_box_at(Maze& map, int x, int y, Mesh& mesh) {
 	}
 
 	for (int i : boxind) {
-		mesh.indeces.push_back(base_vrt + i);
+		mesh.indices.push_back(base_vrt + i);
 	}
 }
 
