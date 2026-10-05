@@ -16,7 +16,8 @@ INCS:=-I$(MESHOPTDIR)/src
 MESHOPTOBJDIR:=build
 MESHOPTSRCS:=$(wildcard $(MESHOPTDIR)/src/*.cpp)
 MESHOPTOBJS:=$(addprefix $(MESHOPTOBJDIR)/,$(notdir $(MESHOPTSRCS:%.cpp=%.o)))
-MESHOPTLIB:= $(MESHOPTOBJDIR)/meshoptimizer.a
+MESHOPTLIB:= $(MESHOPTOBJDIR)/libmeshoptimizer.a
+#MESHOPTLIB:=${MESHOPTDIR}/build/libmeshoptimizer.a
 
 .PHONY: clean
 
