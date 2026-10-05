@@ -319,6 +319,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (do_meshopt) {
+		printf("Optimizing using meshoptimizer %d.%d\n", MESHOPTIMIZER_VERSION / 1000, (MESHOPTIMIZER_VERSION % 1000) / 10);
 		map.maze.optimize();
 		map.houses.optimize();
 	}
